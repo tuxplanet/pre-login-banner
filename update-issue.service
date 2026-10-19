@@ -1,0 +1,15 @@
+[Unit]
+Description=Refresh login banner (/etc/issue) with current host information
+# Runs before the console login prompt so the banner is correct right away
+After=network.target systemd-networkd.service systemd-resolved.service
+Before=getty@tty1.service serial-getty@ttyS0.service
+
+[Service]
+Type=oneshot
+# Waits up to 20 s for the network (IP, gateway, DNS); does not hold up boot longer without a network
+Environment=ISSUE_WAIT=20
+ExecStart=/usr/local/sbin/update-issue.sh
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target
