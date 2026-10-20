@@ -23,9 +23,11 @@ on other recent Ubuntu/Debian systems that use systemd.
 ║────────────────────────────────────────────────────────────────────────────║
 ║ Interface                                                           enp0s3 ║
 ║ -------------------------------------------------------------------------- ║
-║ IPv4                                 10.0.2.15/24  (netmask 255.255.255.0) ║
+║ IPv4                                                          10.0.2.15/24 ║
+║ IPv6                                                      2001:db8:1::5/64 ║
 ║ -------------------------------------------------------------------------- ║
-║ Gateway                                                           10.0.2.2 ║
+║ Gateway (IPv4)                                                    10.0.2.2 ║
+║ Gateway (IPv6)                                                     fe80::1 ║
 ║ -------------------------------------------------------------------------- ║
 ║ DNS                                                               10.0.2.3 ║
 ╚════════════════════════════════════════════════════════════════════════════╝
@@ -44,16 +46,18 @@ myhost login:
 | Platform | 32- or 64-bit (`getconf LONG_BIT`) and CPU architecture (`uname -m`) |
 | Kernel | `uname -r` |
 | Disk usage (/) | Free space, total size and percentage in use of the root filesystem, in GiB/TiB (1024-based). The percentage comes from `df`, so it matches `df -h /` |
-| Interface | Every interface with a global IPv4 address |
-| IPv4 | Address with prefix and dotted netmask. Several addresses on one interface are listed one under another |
-| Gateway | Default gateway of that interface (`none` if there is no default route on it) |
+| Interface | Every interface with a global IPv4 or IPv6 address |
+| IPv4 | Address in CIDR notation, e.g. `10.0.2.15/24`. Several addresses on one interface are listed one under another. `none` if absent |
+| IPv6 | Global address in CIDR notation, e.g. `2001:db8:1::5/64`. Temporary privacy and deprecated addresses are skipped. `none` if absent |
+| Gateway (IPv4) | Default IPv4 gateway of that interface (`none` if there is no default route on it) |
+| Gateway (IPv6) | Default IPv6 gateway of that interface, often a link-local address such as `fe80::1` (`none` if there is no default route) |
 | DNS | DNS servers of that interface, one per line |
 
 Notes:
 
-- Only IPv4 is shown. IPv6 addresses, gateways and DNS servers are intentionally left out.
+- The DNS list shows IPv4 DNS servers only; IPv6 DNS servers are skipped.
 - These interfaces are skipped: `lo`, `docker*`, `veth*`, `br-*`, `virbr*`, `lxcbr*`, `lxdbr*`, `cni*`, `flannel*`, `cali*`.
-- If no interface has an IPv4 address, the banner shows `Network: no IPv4 address assigned`.
+- If no interface has an IPv4 address, the banner shows `Network: no IP address assigned`.
 
 ## Files
 
@@ -104,8 +108,8 @@ sudo update-issue.sh
 - `update-issue.service` is a `oneshot` unit enabled in `multi-user.target`. It runs on
   every boot **before** `getty@tty1.service` (and `serial-getty@ttyS0.service`), so the
   banner is up to date when the login prompt appears.
-- The service sets `ISSUE_WAIT=20`: the script waits up to 20 seconds for an IPv4 default
-  route (plus 2 seconds for DHCP/DNS to settle). On a server without a network this delays
+- The service sets `ISSUE_WAIT=20`: the script waits up to 20 seconds for a default
+  route, IPv4 or IPv6 (plus 2 seconds for DHCP/DNS to settle). On a server without a network this delays
   the login prompt by at most that long. `TimeoutStartSec=60` is the hard limit.
 - The colors are plain ANSI escape codes. `agetty` passes them to the console unchanged.
   The banner contains no backslashes, so `agetty` does not try to expand anything in it.
@@ -128,7 +132,7 @@ and prefers a name of the form `<short name>.<domain>`. If none is found, only t
 is shown. To make the FQDN appear:
 
 ```bash
-sudo hostnamectl set-hostname nebula
+sudo hostnamectl set-hostname myhost
 sudo nano /etc/hosts        # add:  10.0.2.15   myhost.test myhost
 hostname -f                 # should print myhost.test
 sudo update-issue.sh
@@ -212,7 +216,7 @@ The console font or locale cannot display the box-drawing characters. Run
 or a very basic remote console, replace the box characters (`═ ║ ╔ ╗ ╚ ╝ ╠ ╣ ─`) in the script
 with plain ASCII (`= | +`).
 
-**The Network section is empty or `Gateway`/`DNS` show `none` after boot**
+**The Network section is empty or `Gateway (IPv4)`/`Gateway (IPv6)`/`DNS` show `none` after boot**
 
 The network was not ready within `ISSUE_WAIT` seconds (for example a slow DHCP server).
 Run `sudo update-issue.sh` once the network is up, or increase `ISSUE_WAIT` in the service file.
