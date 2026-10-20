@@ -2,7 +2,7 @@
 # update-issue.sh
 # Builds a colored login banner in /etc/issue showing:
 # hostname (short + FQDN), OS, platform (32/64-bit), kernel, disk usage
-# and network details (IPv4 + netmask, gateway, DNS) per interface.
+# and network details (IPv4/IPv6 in CIDR notation, gateways, DNS) per interface.
 #
 # Usage:
 #   sudo update-issue.sh               writes /etc/issue
@@ -60,22 +60,10 @@ center() {           # center TEXT
   printf '%s║%s%*s%s%s%s%*s%s║%s\n' "$C" "$N" "$left" "" "$T" "$t" "$N" "$right" "" "$C" "$N"
 }
 
-prefix2mask() {      # 24 -> 255.255.255.0
-  local p=$1 m="" i o
-  for i in 1 2 3 4; do
-    if   (( p >= 8 )); then o=255; p=$(( p - 8 ))
-    elif (( p >  0 )); then o=$(( 256 - (1 << (8 - p)) )); p=0
-    else o=0
-    fi
-    m+="${m:+.}$o"
-  done
-  printf '%s' "$m"
-}
-
 # ---------- wait for network (only when ISSUE_WAIT is set) ----------
 waited=0
 for (( i = 0; i < ${ISSUE_WAIT:-0}; i++ )); do
-  if [ -n "$(ip route show default 2>/dev/null)" ]; then
+  if [ -n "$(ip route show default 2>/dev/null)$(ip -6 route show default 2>/dev/null)" ]; then
     break
   fi
   sleep 1; waited=1
@@ -152,8 +140,8 @@ build() {
   row "Disk usage (/)" "$DISK"
   hline ║ ─ ║
 
-  local ifaces first=1 IF a n n4 v4 gw4 dns d
-  ifaces=$(ip -o -4 addr show scope global 2>/dev/null | awk '{print $2}' | awk '!seen[$0]++')
+  local ifaces first=1 IF a n n4 n6 v4 v6 gw4 gw6 dns d
+  ifaces=$(ip -o addr show scope global 2>/dev/null | awk '{print $2}' | awk '!seen[$0]++')
 
   for IF in $ifaces; do
     IF=${IF%%@*}
@@ -164,20 +152,33 @@ build() {
     row "Interface" "$IF"
     dash
 
-    # IPv4 addresses + netmask
+    # IPv4 and IPv6 addresses, both in CIDR notation (address/prefix length)
     v4=$(ip -o -4 addr show dev "$IF" scope global 2>/dev/null | awk '{print $4}')
     n4=0
     for a in $v4; do
-      row "$( (( n4 == 0 )) && echo IPv4 )" "$a  (netmask $(prefix2mask "${a#*/}"))"
+      row "$( (( n4 == 0 )) && echo IPv4 )" "$a"
       n4=$(( n4 + 1 ))
     done
     (( n4 )) || row "IPv4" "none"
 
-    # Gateway
+    # IPv6: temporary privacy addresses and deprecated addresses are skipped
+    v6=$(ip -o -6 addr show dev "$IF" scope global 2>/dev/null |
+         grep -v -e temporary -e deprecated | awk '{print $4}')
+    n6=0
+    for a in $v6; do
+      row "$( (( n6 == 0 )) && echo IPv6 )" "$a"
+      n6=$(( n6 + 1 ))
+    done
+    (( n6 )) || row "IPv6" "none"
+
+    # Gateways (default route of this interface)
     dash
     gw4=$(ip -4 route show default dev "$IF" 2>/dev/null |
           awk '{for (i = 1; i < NF; i++) if ($i == "via") { print $(i+1); exit }}')
-    row "Gateway" "${gw4:-none}"
+    row "Gateway (IPv4)" "${gw4:-none}"
+    gw6=$(ip -6 route show default dev "$IF" 2>/dev/null |
+          awk '{for (i = 1; i < NF; i++) if ($i == "via") { print $(i+1); exit }}')
+    row "Gateway (IPv6)" "${gw6:-none}"
 
     # DNS: this interface's own servers first, then systemd-resolved upstream servers
     dash
@@ -197,7 +198,7 @@ build() {
     (( n )) || row "DNS" "none"
   done
 
-  (( first )) && row "Network" "no IPv4 address assigned"
+  (( first )) && row "Network" "no IP address assigned"
 
   hline ╚ ═ ╝
   echo
